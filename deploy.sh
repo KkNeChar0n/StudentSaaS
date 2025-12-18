@@ -20,7 +20,7 @@ LOCAL_ADMIN_BACKEND="${LOCAL_PROJECT_ROOT}/admin/backend"
 SERVER_DEPLOY_ROOT="/opt/student_saas"
 SERVER_TENANT_FRONTEND="${SERVER_DEPLOY_ROOT}/tenant/frontend"
 SERVER_ADMIN_BACKEND="${SERVER_DEPLOY_ROOT}/admin/backend"
-SERVER_NGINX_ROOT="/var/www/student_saas"
+SERVER_NGINX_ROOT="/var/www/student-saas"
 
 # 颜色输出
 GREEN='\033[0;32m'
@@ -103,15 +103,22 @@ function setup_server_directories() {
 function deploy_tenant_frontend() {
     log_info "步骤2: 部署租户端前端"
     
-    # 检查本地dist目录是否存在
-    if [ ! -d "${LOCAL_TENANT_FRONTEND}/dist" ]; then
-        log_error "本地dist目录不存在，请先运行 'npm run build'"
-        exit 1
+    # 检查服务器上是否已有从GitHub Actions复制过来的dist目录
+    if run_ssh "[ -d /var/www/student-saas/tenant-frontend ]"; then
+        log_info "使用GitHub Actions已复制的dist目录"
+        # 将tenant-frontend目录中的内容移动到tenant目录
+        run_ssh "mv /var/www/student-saas/tenant-frontend/* ${SERVER_NGINX_ROOT}/tenant/ 2>/dev/null || true"
+        run_ssh "rmdir /var/www/student-saas/tenant-frontend 2>/dev/null || true"
+    else
+        # 否则，检查本地dist目录（适用于本地运行部署脚本的情况）
+        if [ ! -d "${LOCAL_TENANT_FRONTEND}/dist" ]; then
+            log_error "本地dist目录不存在，请先运行 'npm run build'"
+            exit 1
+        fi
+        # 复制构建文件到服务器
+        log_info "复制前端构建文件..."
+        run_scp "${LOCAL_TENANT_FRONTEND}/dist/*" "${SERVER_NGINX_ROOT}/tenant/"
     fi
-    
-    # 复制构建文件到服务器
-    log_info "复制前端构建文件..."
-    run_scp "${LOCAL_TENANT_FRONTEND}/dist/*" "${SERVER_NGINX_ROOT}/tenant/"
     
     # 设置权限
     run_ssh "chown -R nginx:nginx ${SERVER_NGINX_ROOT}/tenant"
