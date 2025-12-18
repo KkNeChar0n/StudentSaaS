@@ -151,7 +151,7 @@ function setup_server_environment() {
     run_ssh "yum install -y nginx python3 python3-devel mysql-devel gcc firewalld"
     
     # 安装Node.js（用于前端构建，如果需要）
-    run_ssh "curl -sL https://rpm.nodesource.com/setup_18.x | bash - && yum install -y nodejs"
+    run_ssh "curl -sL https://rpm.nodesource.com/setup_20.x | bash - && yum install -y nodejs"
     
     # 启动并启用防火墙
     run_ssh "systemctl start firewalld && systemctl enable firewalld"
