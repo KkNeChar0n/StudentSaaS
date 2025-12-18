@@ -174,7 +174,8 @@ function setup_server_environment() {
     
     # 安装必要软件包
     run_ssh "yum update -y && yum install -y epel-release"
-    run_ssh "yum install -y nginx python3 python3-devel mysql-devel gcc firewalld"
+    run_ssh "yum install -y nginx python3 python3-devel gcc firewalld"
+    run_ssh "yum install -y mysql-devel --nogpgcheck"
     
     # 确保nginx用户和组存在
     run_ssh "getent group nginx >/dev/null 2>&1 || groupadd -r nginx"
