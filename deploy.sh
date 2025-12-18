@@ -183,14 +183,11 @@ function setup_server_environment() {
     run_ssh "rm -f /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql"
     run_ssh "rm -f /etc/yum.repos.d/mysql*.repo"
     run_ssh "yum clean all"
-    # 重新导入正确的MySQL GPG密钥（2022版）
-    run_ssh "curl -sSL -o /tmp/RPM-GPG-KEY-mysql-2022 https://repo.mysql.com/RPM-GPG-KEY-mysql-2022"
-    run_ssh "rpm --import /tmp/RPM-GPG-KEY-mysql-2022"
-    # 下载MySQL仓库包并使用rpm安装，跳过签名检查作为后备方案
+    # 下载MySQL仓库包并使用yum localinstall安装，跳过GPG检查
     run_ssh "curl -sSL -o /tmp/mysql80-community-release-el7-11.noarch.rpm https://dev.mysql.com/get/mysql80-community-release-el7-11.noarch.rpm"
-    run_ssh "rpm -ivh /tmp/mysql80-community-release-el7-11.noarch.rpm --nodeps --force --nosignature || true"
+    run_ssh "yum localinstall -y /tmp/mysql80-community-release-el7-11.noarch.rpm --nogpgcheck || true"
     # 禁用MySQL仓库的GPG检查以确保安装成功
-    run_ssh "sed -i 's/^gpgcheck=1/gpgcheck=0/g' /etc/yum.repos.d/mysql*.repo || true"
+    run_ssh "sed -i -e 's/^gpgcheck=1/gpgcheck=0/' -e '/^gpgkey/s/^/#/' /etc/yum.repos.d/mysql*.repo || true"
     run_ssh "yum install -y mysql-devel --nogpgcheck"
     
     # 确保nginx用户和组存在
