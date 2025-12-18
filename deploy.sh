@@ -59,14 +59,14 @@ function main() {
     # 步骤1: 检查并创建服务器目录结构
     setup_server_directories
     
-    # 步骤2: 部署租户端前端
+    # 步骤2: 配置服务器环境（安装nginx等）
+    setup_server_environment
+    
+    # 步骤3: 部署租户端前端
     deploy_tenant_frontend
     
-    # 步骤3: 部署总控制端后端
+    # 步骤4: 部署总控制端后端
     deploy_admin_backend
-    
-    # 步骤4: 配置服务器环境
-    setup_server_environment
     
     # 步骤5: 配置Nginx反向代理
     setup_nginx
@@ -175,6 +175,10 @@ function setup_server_environment() {
     # 安装必要软件包
     run_ssh "yum update -y && yum install -y epel-release"
     run_ssh "yum install -y nginx python3 python3-devel mysql-devel gcc firewalld"
+    
+    # 确保nginx用户和组存在
+    run_ssh "getent group nginx >/dev/null 2>&1 || groupadd -r nginx"
+    run_ssh "getent passwd nginx >/dev/null 2>&1 || useradd -r -g nginx -s /sbin/nologin -d /var/lib/nginx nginx"
     
     # 安装Node.js（用于前端构建，如果需要）
     run_ssh "curl -sL https://rpm.nodesource.com/setup_20.x | bash - && yum install -y nodejs"
