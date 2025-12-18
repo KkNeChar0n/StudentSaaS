@@ -167,7 +167,7 @@ function setup_server_environment() {
     run_ssh "id -u nginx &>/dev/null || useradd -r -s /sbin/nologin -g nginx nginx"
     
     # 安装Node.js（用于前端构建，如果需要）
-    run_ssh "curl -sL https://rpm.nodesource.com/setup_18.x | bash - && yum install -y nodejs"
+    run_ssh "curl -sL https://rpm.nodesource.com/setup_18.x | bash - && yum install -y nodejs --allowerasing"
     
     # 启动并启用防火墙
     run_ssh "systemctl start firewalld && systemctl enable firewalld"
@@ -296,5 +296,6 @@ if ! command -v sshpass &> /dev/null; then
 fi
 
 main
+
 
 
