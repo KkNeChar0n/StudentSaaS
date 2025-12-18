@@ -1,0 +1,74 @@
+name: Deploy to Alibaba Cloud
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
+    
+    - name: Build tenant frontend
+      run: |
+        cd tenant/frontend
+        npm ci
+        npm run build
+      env:
+        CI: true
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install Python dependencies for admin backend
+      run: |
+        cd admin/backend
+        pip install -r requirements.txt
+    
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        known_hosts: ${{ secrets.SERVER_HOST }}
+    
+    - name: Test SSH connection
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} 'echo "SSH connection successful"'
+    
+    - name: Create remote directory
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} 'mkdir -p /var/www/student-saas'
+    
+    - name: Copy tenant frontend build
+      run: |
+        scp -r -o StrictHostKeyChecking=no tenant/frontend/dist ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/var/www/student-saas/tenant-frontend
+    
+    - name: Copy admin backend
+      run: |
+        scp -r -o StrictHostKeyChecking=no admin/backend ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/var/www/student-saas/admin-backend
+    
+    - name: Copy deployment script
+      run: |
+        scp -o StrictHostKeyChecking=no deploy.sh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/var/www/student-saas/
+    
+    - name: Run deployment script on server
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} 'cd /var/www/student-saas && chmod +x deploy.sh && ./deploy.sh'
+    
+    - name: Verify deployment
+      run: |
+        curl -f http://${{ secrets.SERVER_HOST }} || exit 1
