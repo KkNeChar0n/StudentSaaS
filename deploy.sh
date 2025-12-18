@@ -175,6 +175,8 @@ function setup_server_environment() {
     # 安装必要软件包
     run_ssh "yum update -y && yum install -y epel-release"
     run_ssh "yum install -y nginx python3 python3-devel gcc firewalld"
+    # 重新导入MySQL GPG密钥以解决密钥不匹配问题
+    run_ssh "curl -sSL https://repo.mysql.com/RPM-GPG-KEY-mysql | rpm --import - || true"
     run_ssh "yum install -y mysql-devel --nogpgcheck"
     
     # 确保nginx用户和组存在
