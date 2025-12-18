@@ -12,8 +12,7 @@ SERVER_PASSWORD="qweasd123Q"  # 注意：在生产环境中建议使用SSH密钥
 DOMAIN="charonspace.asia"
 
 # 本地项目路径
-# 优先使用环境变量PROJECT_ROOT，默认值为Windows路径（用于本地测试）
-LOCAL_PROJECT_ROOT="${PROJECT_ROOT:-/mnt/d/StudentSaaS}"  # 根据实际Windows路径调整，或使用相对路径
+LOCAL_PROJECT_ROOT="/mnt/d/StudentSaaS"  # 根据实际Windows路径调整，或使用相对路径
 LOCAL_TENANT_FRONTEND="${LOCAL_PROJECT_ROOT}/tenant/frontend"
 LOCAL_ADMIN_BACKEND="${LOCAL_PROJECT_ROOT}/admin/backend"
 
@@ -21,7 +20,7 @@ LOCAL_ADMIN_BACKEND="${LOCAL_PROJECT_ROOT}/admin/backend"
 SERVER_DEPLOY_ROOT="/opt/student_saas"
 SERVER_TENANT_FRONTEND="${SERVER_DEPLOY_ROOT}/tenant/frontend"
 SERVER_ADMIN_BACKEND="${SERVER_DEPLOY_ROOT}/admin/backend"
-SERVER_NGINX_ROOT="/var/www/student-saas"
+SERVER_NGINX_ROOT="/var/www/student_saas"
 
 # 颜色输出
 GREEN='\033[0;32m'
@@ -59,14 +58,14 @@ function main() {
     # 步骤1: 检查并创建服务器目录结构
     setup_server_directories
     
-    # 步骤2: 配置服务器环境（安装nginx等）
-    setup_server_environment
-    
-    # 步骤3: 部署租户端前端
+    # 步骤2: 部署租户端前端
     deploy_tenant_frontend
     
-    # 步骤4: 部署总控制端后端
+    # 步骤3: 部署总控制端后端
     deploy_admin_backend
+    
+    # 步骤4: 配置服务器环境
+    setup_server_environment
     
     # 步骤5: 配置Nginx反向代理
     setup_nginx
@@ -104,65 +103,40 @@ function setup_server_directories() {
 function deploy_tenant_frontend() {
     log_info "步骤2: 部署租户端前端"
     
-    # 调试：列出服务器上/var/www/student-saas目录的内容
-    log_info "检查服务器目录 /var/www/student-saas 内容:"
-    run_ssh "ls -la /var/www/student-saas/ || echo '目录不存在'"
-    
-    # 检查服务器上是否已存在GitHub Actions复制的dist目录
-    if [ -d "/var/www/student-saas/tenant-frontend" ]; then
-        log_info "发现GitHub Actions复制的dist目录，移动文件到Nginx目录"
-        mv "/var/www/student-saas/tenant-frontend"/* "${SERVER_NGINX_ROOT}/tenant/" 2>/dev/null || true
-        rmdir "/var/www/student-saas/tenant-frontend" 2>/dev/null || true
-        log_info "文件移动完成"
-    else
-        # 如果在服务器上运行，且未找到复制目录，则报错
-        log_error "未找到GitHub Actions复制的dist目录 /var/www/student-saas/tenant-frontend"
-        log_error "请确保GitHub Actions工作流中的复制步骤已成功执行"
-        run_ssh "ls -la /var/www/student-saas/"
-        log_warn "当前工作目录: $(pwd)"
+    # 检查本地dist目录是否存在
+    if [ ! -d "${LOCAL_TENANT_FRONTEND}/dist" ]; then
+        log_error "本地dist目录不存在，请先运行 'npm run build'"
         exit 1
     fi
     
+    # 复制构建文件到服务器
+    log_info "复制前端构建文件..."
+    run_scp "${LOCAL_TENANT_FRONTEND}/dist/*" "${SERVER_NGINX_ROOT}/tenant/"
+    
     # 设置权限
-    chown -R nginx:nginx ${SERVER_NGINX_ROOT}/tenant
-    chmod -R 755 ${SERVER_NGINX_ROOT}/tenant
+    run_ssh "chown -R nginx:nginx ${SERVER_NGINX_ROOT}/tenant"
+    run_ssh "chmod -R 755 ${SERVER_NGINX_ROOT}/tenant"
 }
 
 function deploy_admin_backend() {
     log_info "步骤3: 部署总控制端后端"
     
-    # 调试：列出服务器上/var/www/student-saas目录的内容
-    log_info "检查服务器目录 /var/www/student-saas 内容:"
-    run_ssh "ls -la /var/www/student-saas/ || echo '目录不存在'"
+    # 创建临时目录并复制文件
+    local temp_dir="/tmp/student_saas_backend_$(date +%s)"
+    mkdir -p "${temp_dir}"
     
-    # 检查服务器上是否已存在GitHub Actions复制的admin-backend目录
-    if [ -d "/var/www/student-saas/admin-backend" ]; then
-        log_info "发现GitHub Actions复制的admin-backend目录，移动文件到部署目录"
-        # 确保目标目录存在
-        run_ssh "mkdir -p ${SERVER_ADMIN_BACKEND}"
-        # 移动文件
-        run_ssh "mv /var/www/student-saas/admin-backend/* ${SERVER_ADMIN_BACKEND}/ 2>/dev/null || true"
-        run_ssh "rmdir /var/www/student-saas/admin-backend 2>/dev/null || true"
-        log_info "文件移动完成"
-    else
-        log_info "未找到GitHub Actions复制的目录，从本地复制后端文件"
-        # 创建临时目录并复制文件
-        local temp_dir="/tmp/student_saas_backend_$(date +%s)"
-        mkdir -p "${temp_dir}"
-        
-        # 复制后端文件（排除不需要的文件）
-        cp -r "${LOCAL_ADMIN_BACKEND}/"* "${temp_dir}/" 2>/dev/null || true
-        
-        # 清理不必要的文件
-        rm -rf "${temp_dir}/__pycache__" "${temp_dir}/.git" "${temp_dir}/venv" "${temp_dir}/dev.db" 2>/dev/null || true
-        
-        # 复制到服务器
-        log_info "复制后端文件..."
-        run_scp "${temp_dir}" "${SERVER_ADMIN_BACKEND}"
-        
-        # 清理临时目录
-        rm -rf "${temp_dir}"
-    fi
+    # 复制后端文件（排除不需要的文件）
+    cp -r "${LOCAL_ADMIN_BACKEND}/"* "${temp_dir}/" 2>/dev/null || true
+    
+    # 清理不必要的文件
+    rm -rf "${temp_dir}/__pycache__" "${temp_dir}/.git" "${temp_dir}/venv" "${temp_dir}/dev.db" 2>/dev/null || true
+    
+    # 复制到服务器
+    log_info "复制后端文件..."
+    run_scp "${temp_dir}" "${SERVER_ADMIN_BACKEND}"
+    
+    # 清理临时目录
+    rm -rf "${temp_dir}"
     
     # 在服务器上设置Python虚拟环境
     log_info "设置Python虚拟环境..."
@@ -174,28 +148,10 @@ function setup_server_environment() {
     
     # 安装必要软件包
     run_ssh "yum update -y && yum install -y epel-release"
-    run_ssh "yum install -y nginx python3 python3-devel gcc firewalld"
-    # 清理并重新配置MySQL仓库以解决GPG密钥不匹配问题
-    run_ssh "yum remove -y mysql80-community-release || true"
-    run_ssh "rpm -e --nodeps mysql80-community-release || true"
-    # 删除rpm中的GPG密钥（如果存在）
-    run_ssh "rpm -e gpg-pubkey-5072e1f5-* --allmatches --nosignature || true"
-    run_ssh "rm -f /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql"
-    run_ssh "rm -f /etc/yum.repos.d/mysql*.repo"
-    run_ssh "yum clean all"
-    # 下载MySQL仓库包并使用yum localinstall安装，跳过GPG检查
-    run_ssh "curl -sSL -o /tmp/mysql80-community-release-el7-11.noarch.rpm https://dev.mysql.com/get/mysql80-community-release-el7-11.noarch.rpm"
-    run_ssh "yum localinstall -y /tmp/mysql80-community-release-el7-11.noarch.rpm --nogpgcheck || true"
-    # 禁用MySQL仓库的GPG检查以确保安装成功
-    run_ssh "sed -i -e 's/^gpgcheck=1/gpgcheck=0/' -e '/^gpgkey/s/^/#/' /etc/yum.repos.d/mysql*.repo || true"
-    run_ssh "yum install -y mysql-devel --nogpgcheck"
-    
-    # 确保nginx用户和组存在
-    run_ssh "getent group nginx >/dev/null 2>&1 || groupadd -r nginx"
-    run_ssh "getent passwd nginx >/dev/null 2>&1 || useradd -r -g nginx -s /sbin/nologin -d /var/lib/nginx nginx"
+    run_ssh "yum install -y nginx python3 python3-devel mysql-devel gcc firewalld"
     
     # 安装Node.js（用于前端构建，如果需要）
-    run_ssh "curl -sL https://rpm.nodesource.com/setup_20.x | bash - && yum install -y nodejs"
+    run_ssh "curl -sL https://rpm.nodesource.com/setup_18.x | bash - && yum install -y nodejs"
     
     # 启动并启用防火墙
     run_ssh "systemctl start firewalld && systemctl enable firewalld"
