@@ -158,7 +158,8 @@ function setup_server_environment() {
     log_info "步骤4: 配置服务器环境"
     
     # 安装必要软件包
-    run_ssh "yum update -y && yum install -y epel-release"
+    run_ssh "yum update -y"
+    run_ssh "yum install -y epel-release --allowerasing"
     run_ssh "yum install -y nginx python3 python3-devel mysql-devel gcc firewalld"
     
     # 确保nginx用户和组存在
@@ -295,4 +296,5 @@ if ! command -v sshpass &> /dev/null; then
 fi
 
 main
+
 
