@@ -158,16 +158,29 @@ function setup_server_environment() {
     log_info "步骤4: 配置服务器环境"
     
     # 安装必要软件包
-    run_ssh "yum update -y"
-    run_ssh "yum install -y epel-release --allowerasing"
-    run_ssh "yum install -y nginx python3 python3-devel mysql-devel gcc firewalld"
+    # 先移除可能存在的nodesource仓库，避免与系统包冲突
+    log_info "移除可能存在的nodesource仓库..."
+    run_ssh "rm -f /etc/yum.repos.d/nodesource*.repo"
+    
+    # 清除yum缓存，确保仓库变更生效
+    run_ssh "yum clean all"
+    
+    # 强制移除可能冲突的Node.js包，避免与其他软件包冲突
+    log_info "强制移除可能冲突的Node.js包..."
+    run_ssh "yum remove -y nodejs nodejs-full-i18n --allowerasing 2>/dev/null || echo '警告：yum移除Node.js包失败，尝试强制移除...' && rpm -e --nodeps nodejs nodejs-full-i18n 2>/dev/null || echo '未发现Node.js相关包或强制移除失败'"
+    
+    # 更新系统，禁用可能残留的nodesource仓库，并排除Node.js相关包
+    run_ssh "yum update -y --disablerepo=nodesource* --exclude=nodejs* --exclude=nodejs-full-i18n*"
+    run_ssh "yum install -y epel-release --allowerasing --disablerepo=nodesource* --exclude=nodejs* --exclude=nodejs-full-i18n*"
+    run_ssh "yum install -y nginx python3 python3-devel mysql-devel gcc firewalld --disablerepo=nodesource* --exclude=nodejs* --exclude=nodejs-full-i18n*"
     
     # 确保nginx用户和组存在
     run_ssh "getent group nginx &>/dev/null || groupadd nginx"
     run_ssh "id -u nginx &>/dev/null || useradd -r -s /sbin/nologin -g nginx nginx"
     
-    # 安装Node.js（用于前端构建，如果需要）
-    run_ssh "curl -sL https://rpm.nodesource.com/setup_18.x | bash - && yum install -y nodejs --allowerasing"
+    # 安装Node.js（用于前端构建，如果需要）（注释掉，因为前端构建已在CI/CD完成）
+    # run_ssh "curl -sL https://rpm.nodesource.com/setup_18.x | bash - && yum install -y nodejs --allowerasing"
+    log_warn "Node.js 安装已跳过，因为前端构建已在CI/CD流程中完成。如果需要在服务器上构建前端，请手动安装Nodejs。"
     
     # 启动并启用防火墙
     run_ssh "systemctl start firewalld && systemctl enable firewalld"
@@ -296,6 +309,13 @@ if ! command -v sshpass &> /dev/null; then
 fi
 
 main
+
+
+
+
+
+
+
 
 
 
