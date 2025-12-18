@@ -183,7 +183,10 @@ function setup_server_environment() {
     run_ssh "rm -f /etc/pki/rpm-gpg/RPM-GPG-KEY-mysql"
     run_ssh "rm -f /etc/yum.repos.d/mysql*.repo"
     run_ssh "yum clean all"
-    # 下载MySQL仓库包并使用rpm安装，跳过签名检查
+    # 重新导入正确的MySQL GPG密钥（2022版）
+    run_ssh "curl -sSL -o /tmp/RPM-GPG-KEY-mysql-2022 https://repo.mysql.com/RPM-GPG-KEY-mysql-2022"
+    run_ssh "rpm --import /tmp/RPM-GPG-KEY-mysql-2022"
+    # 下载MySQL仓库包并使用rpm安装，跳过签名检查作为后备方案
     run_ssh "curl -sSL -o /tmp/mysql80-community-release-el7-11.noarch.rpm https://dev.mysql.com/get/mysql80-community-release-el7-11.noarch.rpm"
     run_ssh "rpm -ivh /tmp/mysql80-community-release-el7-11.noarch.rpm --nodeps --force --nosignature || true"
     # 禁用MySQL仓库的GPG检查以确保安装成功
