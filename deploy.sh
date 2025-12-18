@@ -157,15 +157,56 @@ function deploy_admin_backend() {
     log_info "步骤3: 部署总控制端后端"
     
     # 创建临时目录并复制文件
-    local temp_dir="/tmp/student_saas_backend_$(date +%s)"
-    mkdir -p "${temp_dir}"
+    log_info "创建临时目录..."
+    local temp_dir="$(mktemp -d)"
+    if [ $? -ne 0 ]; then
+        log_error "创建临时目录失败"
+        exit 1
+    fi
+    log_info "临时目录创建于: ${temp_dir}"
     
-    # 复制后端文件（排除不需要的文件）
-    cp -r "${LOCAL_ADMIN_BACKEND}/"* "${temp_dir}/" 2>/dev/null || true
+    # 检查源目录是否存在
+    log_info "检查源目录: ${LOCAL_ADMIN_BACKEND}"
+    # 调试：输出LOCAL_ADMIN_BACKEND的实际值
+    log_info "LOCAL_ADMIN_BACKEND变量值: '${LOCAL_ADMIN_BACKEND}'"
+    log_info "当前工作目录: $(pwd)"
+    if [ ! -d "${LOCAL_ADMIN_BACKEND}" ]; then
+        log_error "源目录不存在: ${LOCAL_ADMIN_BACKEND}"
+        exit 1
+    fi
     
-    # 清理不必要的文件
-    rm -rf "${temp_dir}/__pycache__" "${temp_dir}/.git" "${temp_dir}/venv" "${temp_dir}/dev.db" 2>/dev/null || true
-
+    # 显示源目录详细内容
+    log_info "源目录详细内容:"
+    ls -la "${LOCAL_ADMIN_BACKEND}"
+    
+    # 检查requirements.txt是否存在
+    if [ ! -f "${LOCAL_ADMIN_BACKEND}/requirements.txt" ]; then
+        log_error "源目录中未找到requirements.txt"
+        exit 1
+    else
+        log_info "源目录中找到requirements.txt"
+    fi
+    
+    # 复制后端文件（包括隐藏文件）
+    log_info "复制后端文件从 ${LOCAL_ADMIN_BACKEND} 到 ${temp_dir}"
+    log_info "使用tar命令进行复制..."
+    # 调试：执行复制命令
+    log_info "执行命令: tar -cf - -C \"${LOCAL_ADMIN_BACKEND}\" . | tar -xf - -C \"${temp_dir}\""
+    tar -cf - -C "${LOCAL_ADMIN_BACKEND}" . | tar -xf - -C "${temp_dir}"
+    if [ $? -ne 0 ]; then
+        log_error "使用tar复制文件失败，尝试使用cp命令..."
+        cp -av "${LOCAL_ADMIN_BACKEND}/." "${temp_dir}/"
+        if [ $? -ne 0 ]; then
+            log_error "复制文件失败"
+            exit 1
+        fi
+    fi
+    log_info "复制命令完成"
+    
+    # 立即检查临时目录内容
+    log_info "复制后临时目录内容："
+    ls -la "${temp_dir}/"
+    
     # 检查本地临时目录中是否有requirements.txt
     log_info "检查本地临时目录文件..."
     if [ -f "${temp_dir}/requirements.txt" ]; then
@@ -175,6 +216,10 @@ function deploy_admin_backend() {
         ls -la "${temp_dir}/"
         exit 1
     fi
+    
+    # 清理不必要的文件
+    log_info "清理不必要的文件..."
+    rm -rf "${temp_dir}/__pycache__" "${temp_dir}/.git" "${temp_dir}/venv" "${temp_dir}/dev.db" 2>/dev/null || true
 
     # 复制到服务器
     log_info "复制后端文件..."
@@ -190,6 +235,11 @@ function deploy_admin_backend() {
     run_ssh "ls -la ${SERVER_ADMIN_BACKEND}/"
     run_ssh "test -f ${SERVER_ADMIN_BACKEND}/requirements.txt && echo 'requirements.txt存在' || echo 'requirements.txt不存在'"
     run_ssh "cd ${SERVER_ADMIN_BACKEND} && python3 -m venv venv && source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
+    
+    # 设置目录权限
+    log_info "设置后端目录权限..."
+    run_ssh "chown -R nginx:nginx ${SERVER_ADMIN_BACKEND}"
+    run_ssh "chmod -R 755 ${SERVER_ADMIN_BACKEND}"
 }
 
 function setup_server_environment() {
@@ -347,8 +397,6 @@ if ! command -v sshpass &> /dev/null; then
 fi
 
 main
-
-
 
 
 
