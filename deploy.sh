@@ -5,21 +5,27 @@
 
 set -e  # 出错时退出
 
+# 获取脚本所在目录的绝对路径
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # ============ 配置变量 ============
 SERVER_IP="123.56.84.70"
 SERVER_USER="root"
 SERVER_PASSWORD="qweasd123Q"  # 注意：在生产环境中建议使用SSH密钥
 DOMAIN="charonspace.asia"
 
+# SSH密钥路径（可选，如果设置了则使用密钥认证，否则使用密码）
+SSH_KEY_PATH="${HOME}/.ssh/id_rsa"  # 默认路径，可根据需要修改
+
 # 本地项目路径
-LOCAL_PROJECT_ROOT="/mnt/d/StudentSaaS"  # 根据实际Windows路径调整，或使用相对路径
+LOCAL_PROJECT_ROOT="${SCRIPT_DIR}"  # 使用脚本所在目录作为项目根目录
 LOCAL_TENANT_FRONTEND="${LOCAL_PROJECT_ROOT}/tenant/frontend"
 LOCAL_ADMIN_BACKEND="${LOCAL_PROJECT_ROOT}/admin/backend"
 
 # 服务器部署路径
-SERVER_DEPLOY_ROOT="/opt/student_saas"
-SERVER_TENANT_FRONTEND="${SERVER_DEPLOY_ROOT}/tenant/frontend"
-SERVER_ADMIN_BACKEND="${SERVER_DEPLOY_ROOT}/admin/backend"
+SERVER_DEPLOY_ROOT="/var/www/student-saas"  # 与GitHub Actions中的复制路径一致
+SERVER_TENANT_FRONTEND="${SERVER_DEPLOY_ROOT}/tenant-frontend"  # 匹配GitHub Actions复制路径
+SERVER_ADMIN_BACKEND="${SERVER_DEPLOY_ROOT}/admin-backend"  # 匹配GitHub Actions复制路径
 SERVER_NGINX_ROOT="/var/www/student-saas"
 
 # 颜色输出
@@ -42,13 +48,31 @@ function log_warn() {
 }
 
 function run_ssh() {
-    # 使用sshpass传递密码（需要安装sshpass）
-    sshpass -p "${SERVER_PASSWORD}" ssh -o StrictHostKeyChecking=no "${SERVER_USER}@${SERVER_IP}" "$1"
+    # 优先使用SSH密钥认证，如果密钥存在且可读
+    if [ -f "${SSH_KEY_PATH}" ] && [ -r "${SSH_KEY_PATH}" ]; then
+        ssh -o StrictHostKeyChecking=no -i "${SSH_KEY_PATH}" "${SERVER_USER}@${SERVER_IP}" "$1"
+    else
+        # 回退到密码认证（需要安装sshpass）
+        if ! command -v sshpass &> /dev/null; then
+            log_error "sshpass未安装，无法使用密码认证。请安装sshpass或设置SSH密钥。"
+            exit 1
+        fi
+        sshpass -p "${SERVER_PASSWORD}" ssh -o StrictHostKeyChecking=no "${SERVER_USER}@${SERVER_IP}" "$1"
+    fi
 }
 
 function run_scp() {
-    # 复制文件到服务器
-    sshpass -p "${SERVER_PASSWORD}" scp -o StrictHostKeyChecking=no -r "$1" "${SERVER_USER}@${SERVER_IP}:$2"
+    # 复制文件到服务器，优先使用SSH密钥认证
+    if [ -f "${SSH_KEY_PATH}" ] && [ -r "${SSH_KEY_PATH}" ]; then
+        scp -o StrictHostKeyChecking=no -r -i "${SSH_KEY_PATH}" "$1" "${SERVER_USER}@${SERVER_IP}:$2"
+    else
+        # 回退到密码认证（需要安装sshpass）
+        if ! command -v sshpass &> /dev/null; then
+            log_error "sshpass未安装，无法使用密码认证。请安装sshpass或设置SSH密钥。"
+            exit 1
+        fi
+        sshpass -p "${SERVER_PASSWORD}" scp -o StrictHostKeyChecking=no -r "$1" "${SERVER_USER}@${SERVER_IP}:$2"
+    fi
 }
 
 # ============ 主部署流程 ============
@@ -141,16 +165,30 @@ function deploy_admin_backend() {
     
     # 清理不必要的文件
     rm -rf "${temp_dir}/__pycache__" "${temp_dir}/.git" "${temp_dir}/venv" "${temp_dir}/dev.db" 2>/dev/null || true
-    
+
+    # 检查本地临时目录中是否有requirements.txt
+    log_info "检查本地临时目录文件..."
+    if [ -f "${temp_dir}/requirements.txt" ]; then
+        log_info "requirements.txt存在于临时目录中"
+    else
+        log_error "requirements.txt未找到于临时目录，列出内容："
+        ls -la "${temp_dir}/"
+        exit 1
+    fi
+
     # 复制到服务器
     log_info "复制后端文件..."
-    run_scp "${temp_dir}" "${SERVER_ADMIN_BACKEND}"
+    run_scp "${temp_dir}/" "${SERVER_ADMIN_BACKEND}/"
     
     # 清理临时目录
     rm -rf "${temp_dir}"
     
     # 在服务器上设置Python虚拟环境
     log_info "设置Python虚拟环境..."
+    # 检查文件是否复制成功
+    log_info "检查服务器文件..."
+    run_ssh "ls -la ${SERVER_ADMIN_BACKEND}/"
+    run_ssh "test -f ${SERVER_ADMIN_BACKEND}/requirements.txt && echo 'requirements.txt存在' || echo 'requirements.txt不存在'"
     run_ssh "cd ${SERVER_ADMIN_BACKEND} && python3 -m venv venv && source venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
 }
 
@@ -309,6 +347,17 @@ if ! command -v sshpass &> /dev/null; then
 fi
 
 main
+
+
+
+
+
+
+
+
+
+
+
 
 
 
